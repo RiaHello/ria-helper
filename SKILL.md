@@ -54,7 +54,8 @@ python3 scripts/fetch_skill.py <github_url | owner/repo | 本地路径> --out .s
 判断标准：把这个节点抽掉，后面会不会垮？会垮的就是关键节点。
 
 ### 4. 出图（自己用脚本画 + 弹窗）
-把「阶段为主干、分支为分叉」画成 mermaid，节点上标清每条分支解决的问题/方式，存成文件后用脚本渲染弹窗：
+把「阶段为主干、分支为分叉」画成 mermaid，节点上标清每条分支解决的问题/方式。
+**写 mermaid 必须遵守 [`reference/mermaid-style.md`](reference/mermaid-style.md)**（标签全引号、禁止裸 `<>`、边标签也引号），否则容易「Syntax error」。存成文件后用脚本渲染弹窗：
 
 ```bash
 python3 scripts/render_mermaid.py --in .sdd/tmp/diagram.mmd --title "小石：<skill名> 阶段-分支图"
@@ -125,6 +126,7 @@ python3 scripts/memory.py compare --exclude <当前 skill-id>
 
 - **默认极简，正文 ≤ 一屏**：先结论后细节，详细拆解默认收起，用户要才展开。不许一上来甩一大坨。
 - **不贴 mermaid 源码大块**：图靠脚本弹窗渲染；正文只放图，不放源码（用户要再给）。
+- **mermaid 守规范**：按 `reference/mermaid-style.md` 写——标签全引号、不写裸 `<>`（除 `<br/>`）、边标签也引号，先过自检再渲染。
 - **术语统一中文 + 【❗️】强调**：核心概念全程用同一个中文名，不中英混换；首次出现用【❗️中文名】。
 - **分支四问压一行**：有哪些 / 为什么有 / 解决什么 / 怎么解决，心里答全，写出来一行。
 - **关键节点必深挖**：影响后续所有生成的枢纽节点（如 DESIGN.md），要讲清它的组成 + 作者为什么这么设计。
