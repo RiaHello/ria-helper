@@ -149,14 +149,18 @@ def extract_referenced_paths(content: str, tree_paths: set[str]) -> list[str]:
     return norm
 
 
-def pick_entry(tree_paths: list[str]) -> str | None:
+def pick_entry(tree_paths: list[str], repo_hint: str | None = None) -> str | None:
+    """选主入口：先按文件名优先级 + 路径深度；同条件下优先路径里含仓库名的
+    （多 skill 仓库里，名字匹配仓库的那个通常才是主角）。"""
+    hint = (repo_hint or "").lower().replace("-skill", "").replace("_", "-")
     best = None
-    best_rank = (len(ENTRY_PRIORITY), 999)
+    best_rank = (len(ENTRY_PRIORITY), 1, 999)
     for p in tree_paths:
         name = p.split("/")[-1]
         if name in ENTRY_PRIORITY:
             depth = p.count("/")
-            rank = (ENTRY_PRIORITY.index(name), depth)
+            name_match = 0 if (hint and hint in p.lower()) else 1
+            rank = (ENTRY_PRIORITY.index(name), name_match, depth)
             if rank < best_rank:
                 best_rank = rank
                 best = p
@@ -181,18 +185,33 @@ def fetch_github(owner: str, repo: str, ref: str | None, token: str | None,
     tree_data = json.loads(
         _request(f"{API_ROOT}/repos/{owner}/{repo}/git/trees/{ref}?recursive=1", token)
     )
-    tree_paths = [
-        t["path"] for t in tree_data.get("tree", [])
-        if t.get("type") == "blob" and not is_noise(t["path"])
-    ]
+    blob_sha: dict[str, str] = {}
+    for t in tree_data.get("tree", []):
+        if t.get("type") == "blob" and not is_noise(t["path"]):
+            blob_sha[t["path"]] = t.get("sha", "")
+    tree_paths = list(blob_sha.keys())
     tree_set = set(tree_paths)
 
-    entry = pick_entry(tree_paths)
+    entry = pick_entry(tree_paths, repo_hint=repo)
     if not entry:
         raise SystemExit("[fetch_skill] 没找到主入口（SKILL.md/router.md/CLAUDE.md/README 等）。")
 
     def raw(path: str) -> str:
-        return _request(f"{RAW_ROOT}/{owner}/{repo}/{ref}/{path}").decode("utf-8", "replace")
+        """取文件内容：优先走 api.github.com 的 blobs 接口（base64），失败再退回 raw 域名。
+
+        很多网络环境对 raw.githubusercontent.com 慢/受限，但 api.github.com 通，
+        所以默认用 blobs API，避免整脚本卡死在 raw 上。
+        """
+        sha = blob_sha.get(path)
+        if sha:
+            try:
+                return _request(
+                    f"{API_ROOT}/repos/{owner}/{repo}/git/blobs/{sha}",
+                    token, accept="application/vnd.github.raw", timeout=20,
+                ).decode("utf-8", "replace")
+            except Exception:  # noqa: BLE001  -- 退回 raw 域名
+                pass
+        return _request(f"{RAW_ROOT}/{owner}/{repo}/{ref}/{path}", timeout=20).decode("utf-8", "replace")
 
     entry_content = raw(entry)
     refs = extract_referenced_paths(entry_content, tree_set)[:max_files]
